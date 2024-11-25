@@ -72,9 +72,9 @@ def _tensor_conv1d(
         input (Storage): storage for `input` tensor.
         input_shape (Shape): shape for `input` tensor.
         input_strides (Strides): strides for `input` tensor.
-        weight (Storage): storage for `input` tensor.
-        weight_shape (Shape): shape for `input` tensor.
-        weight_strides (Strides): strides for `input` tensor.
+        weight (Storage): storage for `weight` tensor.
+        weight_shape (Shape): shape for `weight` tensor.
+        weight_strides (Strides): strides for `weight` tensor.
         reverse (bool): anchor weight at left or right
 
     """
@@ -90,8 +90,50 @@ def _tensor_conv1d(
     s1 = input_strides
     s2 = weight_strides
 
-    # TODO: Implement for Task 4.1.
-    raise NotImplementedError("Need to implement for Task 4.1")
+    # For each output position
+    for b in prange(batch):
+        for oc in prange(out_channels):
+            for w in prange(out_width):
+                # Initialize accumulator
+                acc = 0.0
+
+                # For each input channel
+                for ic in range(in_channels):
+                    # For each weight position
+                    for k in range(kw):
+                        if reverse:
+                            current_k = kw - 1 - k
+                            w_pos = w - k  # Adjust position for reverse
+                        else:
+                            current_k = k
+                            w_pos = w + k
+
+                        # Check if position is valid
+                        if 0 <= w_pos < width:
+                            # Get input value
+                            in_pos = (
+                                b * s1[0] +
+                                ic * s1[1] +
+                                w_pos * s1[2]
+                            )
+
+                            # Get weight value
+                            w_pos_weight = (
+                                oc * s2[0] +
+                                ic * s2[1] +
+                                current_k * s2[2]
+                            )
+
+                            acc += input[in_pos] * weight[w_pos_weight]
+
+                # Set output value
+                out_idx = (b, oc, w)
+                out_pos = (
+                    out_idx[0] * out_strides[0] +
+                    out_idx[1] * out_strides[1] +
+                    out_idx[2] * out_strides[2]
+                )
+                out[out_pos] = acc
 
 
 tensor_conv1d = njit(_tensor_conv1d, parallel=True)
@@ -203,24 +245,57 @@ def _tensor_conv2d(
         reverse (bool): anchor weight at top-left or bottom-right
 
     """
-    batch_, out_channels, _, _ = out_shape
-    batch, in_channels, height, width = input_shape
-    out_channels_, in_channels_, kh, kw = weight_shape
+    batch_out, out_channels, height_out, width_out = out_shape
+    batch_in, in_channels, height, width = input_shape
+    out_channels_, in_channels_w, kh, kw = weight_shape
 
     assert (
-        batch == batch_
-        and in_channels == in_channels_
+        batch_out == batch_in
+        and in_channels == in_channels_w
         and out_channels == out_channels_
-    )
+    ), "Shape mismatch between input and weight tensors."
 
-    s1 = input_strides
-    s2 = weight_strides
-    # inners
-    s10, s11, s12, s13 = s1[0], s1[1], s1[2], s1[3]
-    s20, s21, s22, s23 = s2[0], s2[1], s2[2], s2[3]
+    s1, s2, s3, s4 = out_strides
+    i1, i2, i3, i4 = input_strides
+    w1, w2, w3, w4 = weight_strides
 
-    # TODO: Implement for Task 4.2.
-    raise NotImplementedError("Need to implement for Task 4.2")
+    for p in prange(out_size):
+        out_index = np.zeros(4, np.int32)
+        to_index(p, out_shape, out_index)
+        b, oc, h_out, w_out = out_index
+
+        # Calculate output position
+        out_pos = (
+            b * s1 + oc * s2 + h_out * s3 + w_out * s4
+        )
+
+        acc = 0.0
+        for ic in range(in_channels):
+            for kh_i in range(kh):
+                for kw_i in range(kw):
+                    # Calculate input position based on reverse flag
+                    if reverse:
+                        in_h = h_out - kh_i
+                        in_w = w_out - kw_i
+                    else:
+                        in_h = h_out + kh_i
+                        in_w = w_out + kw_i
+
+                    # Check bounds
+                    if (
+                        0 <= in_h < height
+                        and 0 <= in_w < width
+                    ):
+                        # Calculate input and weight positions
+                        in_pos = (
+                            b * i1 + ic * i2 + in_h * i3 + in_w * i4
+                        )
+                        w_pos = (
+                            oc * w1 + ic * w2 + kh_i * w3 + kw_i * w4
+                        )
+                        acc += input[in_pos] * weight[w_pos]
+
+        out[out_pos] = acc
 
 
 tensor_conv2d = njit(_tensor_conv2d, parallel=True, fastmath=True)
