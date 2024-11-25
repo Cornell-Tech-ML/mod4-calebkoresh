@@ -202,6 +202,6 @@ def dropout(input: Tensor, p: float, ignore: bool = False) -> Tensor:
     # Create a mask with the same shape as input
     random = rand(input.shape)
     prob_tensor = tensor([p])  # Create a tensor with single value
-    mask = random.f.lt_zip(prob_tensor).float()
+    mask = random.f.lt_zip(random, prob_tensor).float()
     # Scale the input to maintain the expected value
     return input * (1.0 - mask) / (1.0 - p)
