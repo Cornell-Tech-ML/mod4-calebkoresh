@@ -1,10 +1,7 @@
 from typing import Tuple
 
-from . import operators
-from .autodiff import Context
-from .fast_ops import FastOps
 from .tensor import Tensor
-from .tensor_functions import Function, rand, tensor
+from .tensor_functions import rand, tensor
 
 
 def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
@@ -18,6 +15,7 @@ def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
     Returns:
     -------
         Tensor of size batch x channel x new_height x new_width x (kernel_height * kernel_width) as well as the new_height and new_width value.
+
     """
     batch, channel, height, width = input.shape
     kh, kw = kernel
@@ -30,21 +28,13 @@ def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
 
     # Reshape the input tensor to create tiles
     # First reshape to separate the kernel dimensions
-    input = input.contiguous().view(
-        batch, channel,
-        new_height, kh,
-        new_width, kw
-    )
-    
+    input = input.contiguous().view(batch, channel, new_height, kh, new_width, kw)
+
     # Then reorder dimensions to get the desired shape
     input = input.permute(0, 1, 2, 4, 3, 5)
-    
+
     # Finally combine the kernel dimensions
-    input = input.contiguous().view(
-        batch, channel,
-        new_height, new_width,
-        kh * kw
-    )
+    input = input.contiguous().view(batch, channel, new_height, new_width, kh * kw)
 
     return input, new_height, new_width
 
@@ -60,6 +50,7 @@ def avgpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     Returns:
     -------
         Pooled tensor batch x channel x new_height x new_width
+
     """
     batch, channel, height, width = input.shape
 
@@ -72,7 +63,6 @@ def avgpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     # Ensure output has correct shape
     pooled = pooled.contiguous()
     return pooled.view(batch, channel, new_height, new_width)
-
 
 
 def max(input: Tensor, dim: int) -> Tensor:
@@ -89,6 +79,7 @@ def max(input: Tensor, dim: int) -> Tensor:
     -------
         Tensor
             Tensor containing the maximum values.
+
     """
     return input.f.max_reduce(input, dim)
 
@@ -107,6 +98,7 @@ def softmax(input: Tensor, dim: int) -> Tensor:
     -------
         Tensor
             Softmax of the input tensor.
+
     """
     exps = input.exp()
     sum_exps = exps.sum(dim)
@@ -115,6 +107,7 @@ def softmax(input: Tensor, dim: int) -> Tensor:
     shape[dim] = 1
     sum_exps = sum_exps.contiguous().view(*shape)
     return exps / sum_exps
+
 
 def logsoftmax(input: Tensor, dim: int) -> Tensor:
     """Compute the log softmax of the input tensor along the specified dimension.
@@ -130,9 +123,11 @@ def logsoftmax(input: Tensor, dim: int) -> Tensor:
     -------
         Tensor
             Log softmax of the input tensor.
+
     """
     softmax_tensor = softmax(input, dim)
     return softmax_tensor.log()
+
 
 def maxpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     """Tiled max pooling 2D
@@ -148,6 +143,7 @@ def maxpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     -------
         Tensor
             Pooled tensor with shape (batch, channel, new_height, new_width).
+
     """
     batch, channel, height, width = input.shape
     kh, kw = kernel
@@ -169,6 +165,7 @@ def maxpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     # Reshape to final output dimensions
     return pooled.contiguous().view(batch, channel, new_height, new_width)
 
+
 def dropout(input: Tensor, p: float, ignore: bool = False) -> Tensor:
     """Randomly zeroes some of the elements of the input tensor with probability p.
 
@@ -188,6 +185,7 @@ def dropout(input: Tensor, p: float, ignore: bool = False) -> Tensor:
     -------
         Tensor
             Tensor with elements randomly zeroed.
+
     """
     if ignore:
         return input

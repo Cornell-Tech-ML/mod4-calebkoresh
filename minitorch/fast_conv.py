@@ -7,8 +7,6 @@ from numba import njit as _njit
 from .autodiff import Context
 from .tensor import Tensor
 from .tensor_data import (
-    MAX_DIMS,
-    Index,
     Shape,
     Strides,
     Storage,
@@ -22,6 +20,7 @@ Fn = TypeVar("Fn")
 
 
 def njit(fn: Fn, **kwargs: Any) -> Fn:
+    """Numba njit decorator."""
     return _njit(inline="always", **kwargs)(fn)  # type: ignore
 
 
@@ -111,27 +110,19 @@ def _tensor_conv1d(
                         # Check if position is valid
                         if 0 <= w_pos < width:
                             # Get input value
-                            in_pos = (
-                                b * s1[0] +
-                                ic * s1[1] +
-                                w_pos * s1[2]
-                            )
+                            in_pos = b * s1[0] + ic * s1[1] + w_pos * s1[2]
 
                             # Get weight value
-                            w_pos_weight = (
-                                oc * s2[0] +
-                                ic * s2[1] +
-                                current_k * s2[2]
-                            )
+                            w_pos_weight = oc * s2[0] + ic * s2[1] + current_k * s2[2]
 
                             acc += input[in_pos] * weight[w_pos_weight]
 
                 # Set output value
                 out_idx = (b, oc, w)
                 out_pos = (
-                    out_idx[0] * out_strides[0] +
-                    out_idx[1] * out_strides[1] +
-                    out_idx[2] * out_strides[2]
+                    out_idx[0] * out_strides[0]
+                    + out_idx[1] * out_strides[1]
+                    + out_idx[2] * out_strides[2]
                 )
                 out[out_pos] = acc
 
@@ -169,6 +160,18 @@ class Conv1dFun(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+        """Compute the backward pass for a 1D Convolution.
+
+        Args:
+        ----
+            ctx : Context
+            grad_output : batch x out_channel x width
+
+        Returns:
+        -------
+            tuple of Tensors: (grad_input, grad_weight)
+
+        """
         input, weight = ctx.saved_values
         batch, in_channels, w = input.shape
         out_channels, in_channels, kw = weight.shape
@@ -265,9 +268,7 @@ def _tensor_conv2d(
         b, oc, h_out, w_out = out_index
 
         # Calculate output position
-        out_pos = (
-            b * s1 + oc * s2 + h_out * s3 + w_out * s4
-        )
+        out_pos = b * s1 + oc * s2 + h_out * s3 + w_out * s4
 
         acc = 0.0
         for ic in range(in_channels):
@@ -282,17 +283,10 @@ def _tensor_conv2d(
                         in_w = w_out + kw_i
 
                     # Check bounds
-                    if (
-                        0 <= in_h < height
-                        and 0 <= in_w < width
-                    ):
+                    if 0 <= in_h < height and 0 <= in_w < width:
                         # Calculate input and weight positions
-                        in_pos = (
-                            b * i1 + ic * i2 + in_h * i3 + in_w * i4
-                        )
-                        w_pos = (
-                            oc * w1 + ic * w2 + kh_i * w3 + kw_i * w4
-                        )
+                        in_pos = b * i1 + ic * i2 + in_h * i3 + in_w * i4
+                        w_pos = oc * w1 + ic * w2 + kh_i * w3 + kw_i * w4
                         acc += input[in_pos] * weight[w_pos]
 
         out[out_pos] = acc
@@ -329,6 +323,18 @@ class Conv2dFun(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+        """Compute the backward pass for a 2D Convolution.
+
+        Args:
+        ----
+            ctx : Context
+            grad_output : batch x out_channel x height x width
+
+        Returns:
+        -------
+            tuple of Tensors: (grad_input, grad_weight)
+
+        """
         input, weight = ctx.saved_values
         batch, in_channels, h, w = input.shape
         out_channels, in_channels, kh, kw = weight.shape

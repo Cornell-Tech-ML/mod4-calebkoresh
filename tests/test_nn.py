@@ -38,7 +38,7 @@ def test_max(t: Tensor) -> None:
         for j in range(3):
             assert_close(out[i, j, 0], max([t[i, j, k] for k in range(4)]))
 
-    out = minitorch.max(t, 1)  # Max along middle dimension  
+    out = minitorch.max(t, 1)  # Max along middle dimension
     assert out.shape == (2, 1, 4)
     for i in range(2):
         for j in range(4):
