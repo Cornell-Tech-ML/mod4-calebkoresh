@@ -2,6 +2,14 @@ import random
 
 import embeddings
 
+import sys
+
+import os
+
+# Get absolute path to parent directory
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+
 import minitorch
 from datasets import load_dataset
 
@@ -34,8 +42,9 @@ class Conv1d(minitorch.Module):
         self.bias = RParam(1, out_channels, 1)
 
     def forward(self, input):
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        batch, channels, seq_len = input.shape
+        output = minitorch.Conv1dFun.apply(input, self.weights.value)
+        return output + self.bias.value
 
 
 class CNNSentimentKim(minitorch.Module):
@@ -61,15 +70,75 @@ class CNNSentimentKim(minitorch.Module):
     ):
         super().__init__()
         self.feature_map_size = feature_map_size
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.embedding_size = embedding_size
+        self.filter_sizes = filter_sizes
+        self.dropout_rate = dropout
+
+        # Initialize convolutional layers for each kernel size
+        self.conv_layers = [
+            Conv1d(
+                in_channels=self.embedding_size,
+                out_channels=self.feature_map_size,
+                kernel_width=ks,
+            )
+            for ks in self.filter_sizes
+        ]
+
+        # Fully connected layer: total features = feature_map_size * number of kernels
+        self.fc = Linear(self.feature_map_size * len(self.filter_sizes), 1)
 
     def forward(self, embeddings):
         """
         embeddings tensor: [batch x sentence length x embedding dim]
         """
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        # Transpose to match Conv1d input requirements: [batch_size, embedding_dim, sentence_length]
+        x = embeddings.permute(0, 2, 1)
+
+        # Apply each convolutional layer followed by ReLU and global max pooling
+        pooled_outputs = []
+        for conv in self.conv_layers:
+            conv_out = conv.forward(x)
+            activated = conv_out.relu()
+            pooled = minitorch.max(activated, dim=2)
+            pooled_outputs.append(pooled)
+
+        # Concatenate all pooled features
+        batch_size = pooled_outputs[0].shape[0]
+        feature_size = self.feature_map_size * len(self.filter_sizes)
+
+        # Reshape each pooled output to (batch_size, feature_map_size)
+        reshaped_outputs = [p.view(batch_size, self.feature_map_size) for p in pooled_outputs]
+
+        # Manual concatenation that preserves the computational graph
+        # Initialize with first tensor
+        combined = reshaped_outputs[0]
+
+        # For each subsequent tensor, create a new tensor that combines them using addition
+        for i in range(1, len(reshaped_outputs)):
+            # Create shifted version of current tensor
+            shift_amount = i * self.feature_map_size
+            current = reshaped_outputs[i]
+
+            # Create new tensor with expanded width
+            new_combined = minitorch.tensor([[0.0] * feature_size for _ in range(batch_size)], backend=BACKEND)
+
+            # Fill in the values from both tensors
+            for b in range(batch_size):
+                # Copy existing combined values
+                for j in range((i * self.feature_map_size)):
+                    new_combined[b, j] = new_combined[b, j] + combined[b, j]
+
+                # Add new values in shifted position
+                for j in range(self.feature_map_size):
+                    new_combined[b, j + shift_amount] = new_combined[b, j + shift_amount] + current[b, j]
+
+            combined = new_combined
+
+        fc_output = self.fc.forward(combined)
+        activated_fc = fc_output.relu()
+        dropped = minitorch.dropout(activated_fc, p=self.dropout_rate)
+        output = dropped.sigmoid()
+        return output
 
 
 # Evaluation helper methods
@@ -256,7 +325,7 @@ if __name__ == "__main__":
     train_size = 450
     validation_size = 100
     learning_rate = 0.01
-    max_epochs = 250
+    max_epochs = 1000000
 
     (X_train, y_train), (X_val, y_val) = encode_sentiment_data(
         load_dataset("glue", "sst2"),
